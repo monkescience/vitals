@@ -1,7 +1,9 @@
 package vitals
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"runtime"
@@ -32,16 +34,33 @@ type ReadyResponse struct {
 }
 
 type CheckResponse struct {
-	Name   string `json:"name"`
-	Status Status `json:"status"`
+	Name     string `json:"name"`
+	Status   Status `json:"status"`
+	Message  string `json:"message,omitempty"`
+	Duration string `json:"duration,omitempty"`
 }
 
 type Checker interface {
 	Name() string
-	Check() Status
+	Check(ctx context.Context) (Status, string)
 }
 
-func NewHandler(version string, environment string, checkers []Checker) http.Handler {
+type readyConfig struct {
+	overallTimeout  time.Duration
+	perCheckTimeout time.Duration
+}
+
+type ReadyOption func(*readyConfig)
+
+func WithOverallReadyTimeout(d time.Duration) ReadyOption {
+	return func(c *readyConfig) { c.overallTimeout = d }
+}
+
+func WithPerCheckTimeout(d time.Duration) ReadyOption {
+	return func(c *readyConfig) { c.perCheckTimeout = d }
+}
+
+func NewHandler(version string, environment string, checkers []Checker, opts ...ReadyOption) http.Handler {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
@@ -51,7 +70,7 @@ func NewHandler(version string, environment string, checkers []Checker) http.Han
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", LiveHandlerFunc(version, startTime, host, environment))
-	mux.HandleFunc("GET /health/ready", ReadyHandlerFunc(checkers))
+	mux.HandleFunc("GET /health/ready", ReadyHandlerFunc(checkers, opts...))
 
 	return mux
 }
@@ -59,6 +78,7 @@ func NewHandler(version string, environment string, checkers []Checker) http.Han
 // LiveHandlerFunc handles liveness check requests
 func LiveHandlerFunc(version string, startTime time.Time, host string, environment string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		response := LiveResponse{
 			Status:      StatusOK,
 			Version:     version,
@@ -71,13 +91,38 @@ func LiveHandlerFunc(version string, startTime time.Time, host string, environme
 		disableResponseCacheHeaders(w)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(response)
+		err := json.NewEncoder(w).Encode(response)
+		if err != nil {
+			slog.ErrorContext(
+				ctx,
+				"failed to encode live health response",
+				slog.String("handler", "live"),
+				slog.String("route", "/health/live"),
+				slog.Int("status", http.StatusOK),
+				slog.Any("error", err),
+			)
+		}
 	}
 }
 
-// ReadyHandlerFunc handles readiness check requests
-func ReadyHandlerFunc(checkers []Checker) http.HandlerFunc {
+// ReadyHandlerFunc handles readiness check requests with context and timeouts
+func ReadyHandlerFunc(checkers []Checker, opts ...ReadyOption) http.HandlerFunc {
+	cfg := readyConfig{
+		overallTimeout:  2 * time.Second,
+		perCheckTimeout: 800 * time.Millisecond,
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if cfg.overallTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, cfg.overallTimeout)
+			defer cancel()
+		}
+
 		response := ReadyResponse{
 			Status: StatusOK,
 			Checks: make([]CheckResponse, len(checkers)),
@@ -87,14 +132,34 @@ func ReadyHandlerFunc(checkers []Checker) http.HandlerFunc {
 		wg.Add(len(checkers))
 
 		for idx, checker := range checkers {
-			go func(i int, c Checker) {
+			i, c := idx, checker
+			go func() {
 				defer wg.Done()
-				status := c.Check()
-				response.Checks[i] = CheckResponse{
-					Name:   c.Name(),
-					Status: status,
+				start := time.Now()
+				cctx := ctx
+				if cfg.perCheckTimeout > 0 {
+					var ccancel context.CancelFunc
+					cctx, ccancel = context.WithTimeout(ctx, cfg.perCheckTimeout)
+					defer ccancel()
 				}
-			}(idx, checker)
+
+				status, msg := c.Check(cctx)
+				if err := cctx.Err(); err != nil && status == StatusOK {
+					status = StatusError
+					if msg == "" {
+						msg = err.Error()
+					} else {
+						msg = msg + "; " + err.Error()
+					}
+				}
+
+				response.Checks[i] = CheckResponse{
+					Name:     c.Name(),
+					Status:   status,
+					Message:  msg,
+					Duration: time.Since(start).String(),
+				}
+			}()
 		}
 
 		wg.Wait()
@@ -108,13 +173,23 @@ func ReadyHandlerFunc(checkers []Checker) http.HandlerFunc {
 
 		disableResponseCacheHeaders(w)
 		w.Header().Set("Content-Type", "application/json")
+		statusCode := http.StatusOK
 		if response.Status != StatusOK {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			w.WriteHeader(http.StatusOK)
+			statusCode = http.StatusServiceUnavailable
 		}
+		w.WriteHeader(statusCode)
 
-		_ = json.NewEncoder(w).Encode(response)
+		err := json.NewEncoder(w).Encode(response)
+		if err != nil {
+			slog.ErrorContext(
+				ctx,
+				"failed to encode ready health response",
+				slog.String("handler", "ready"),
+				slog.String("route", "/health/ready"),
+				slog.Int("status", statusCode),
+				slog.Any("error", err),
+			)
+		}
 	}
 }
 

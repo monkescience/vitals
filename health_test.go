@@ -1,6 +1,7 @@
 package vitals
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,11 +17,16 @@ type mockChecker struct {
 }
 
 func (m mockChecker) Name() string { return m.name }
-func (m mockChecker) Check() Status {
-	if m.delay > 0 {
-		time.Sleep(m.delay)
+func (m mockChecker) Check(ctx context.Context) (Status, string) {
+	if m.delay <= 0 {
+		return m.stat, ""
 	}
-	return m.stat
+	select {
+	case <-time.After(m.delay):
+		return m.stat, ""
+	case <-ctx.Done():
+		return StatusError, ctx.Err().Error()
+	}
 }
 
 func Test(t *testing.T) {
@@ -142,8 +148,11 @@ func TestReadyHandler_AllOK(t *testing.T) {
 		if resp.Checks[i].Name != c.Name() {
 			t.Errorf("check %d name mismatch: expected %q, got %q", i, c.Name(), resp.Checks[i].Name)
 		}
-		if resp.Checks[i].Status != c.Check() { // Check returns constant here
-			t.Errorf("check %d status mismatch: expected %q, got %q", i, c.Check(), resp.Checks[i].Status)
+		// Compare expected status from mockChecker
+		if mc, ok := c.(mockChecker); ok {
+			if resp.Checks[i].Status != mc.stat {
+				t.Errorf("check %d status mismatch: expected %q, got %q", i, mc.stat, resp.Checks[i].Status)
+			}
 		}
 	}
 }
@@ -208,5 +217,39 @@ func TestNewHandler_Routes(t *testing.T) {
 	mux.ServeHTTP(rr2, req2)
 	if rr2.Code != http.StatusOK {
 		t.Fatalf("/health/ready expected %d, got %d", http.StatusOK, rr2.Code)
+	}
+}
+
+func TestReadyHandler_DiagnosticsAndTimeout(t *testing.T) {
+	checkers := []Checker{
+		mockChecker{name: "fast", stat: StatusOK, delay: 10 * time.Millisecond},
+		mockChecker{name: "slow", stat: StatusOK, delay: 2 * time.Second},
+	}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	h := ReadyHandlerFunc(checkers, WithPerCheckTimeout(50*time.Millisecond), WithOverallReadyTimeout(1*time.Second))
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+	var resp ReadyResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != StatusError {
+		t.Fatalf("expected error status")
+	}
+	if len(resp.Checks) != 2 {
+		t.Fatalf("expected 2 checks")
+	}
+	if resp.Checks[0].Duration == "" || resp.Checks[1].Duration == "" {
+		t.Fatalf("missing durations")
+	}
+	if resp.Checks[1].Status != StatusError {
+		t.Fatalf("slow should be error due to timeout")
+	}
+	if resp.Checks[1].Message == "" {
+		t.Fatalf("expected timeout message")
 	}
 }
