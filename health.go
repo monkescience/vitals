@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 )
@@ -30,7 +29,6 @@ type ReadyResponse struct {
 	Status      Status          `json:"status"`
 	Checks      []CheckResponse `json:"checks"`
 	Version     string          `json:"version,omitempty"`
-	Host        string          `json:"host,omitempty"`
 	Environment string          `json:"environment,omitempty"`
 }
 
@@ -121,17 +119,12 @@ func NewHandler(opts ...HandlerOption) http.Handler {
 		o(&hc)
 	}
 
-	host, err := os.Hostname()
-	if err != nil {
-		host = "unknown"
-	}
-
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health/live", LiveHandlerFunc())
 	mux.HandleFunc(
 		"GET /health/ready",
-		ReadyHandlerFunc(hc.version, host, hc.environment, hc.checkers, hc.readyOpts...),
+		ReadyHandlerFunc(hc.version, hc.environment, hc.checkers, hc.readyOpts...),
 	)
 
 	return mux
@@ -150,10 +143,9 @@ func LiveHandlerFunc() http.HandlerFunc {
 }
 
 // ReadyHandlerFunc returns an HTTP handler function for readiness health checks that executes
-// the provided checkers and includes version, host, and environment metadata in the response.
+// the provided checkers and includes version and environment metadata in the response.
 func ReadyHandlerFunc(
 	version string,
-	host string,
 	environment string,
 	checkers []Checker,
 	opts ...ReadyOption,
@@ -171,7 +163,7 @@ func ReadyHandlerFunc(
 	}
 
 	return func(writer http.ResponseWriter, req *http.Request) {
-		readyHandler(writer, req, cfg, version, host, environment, checkers)
+		readyHandler(writer, req, cfg, version, environment, checkers)
 	}
 }
 
@@ -179,7 +171,7 @@ func readyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 	cfg readyConfig,
-	version, host, environment string,
+	version, environment string,
 	checkers []Checker,
 ) {
 	ctx := req.Context()
@@ -195,7 +187,6 @@ func readyHandler(
 		Status:      StatusOK,
 		Checks:      checks,
 		Version:     version,
-		Host:        host,
 		Environment: environment,
 	}
 

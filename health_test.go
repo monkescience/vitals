@@ -124,10 +124,6 @@ func Test(t *testing.T) {
 			t.Errorf("expected environment %v, got %v", environment, response.Environment)
 		}
 
-		if response.Host == "" {
-			t.Error("expected host to be set")
-		}
-
 		if len(response.Checks) != 0 {
 			t.Errorf("expected no checks, got %d", len(response.Checks))
 		}
@@ -476,7 +472,6 @@ func Test(t *testing.T) {
 
 		handler := vitals.ReadyHandlerFunc(
 			"2.0.0",
-			"test-host",
 			"production",
 			[]vitals.Checker{checker},
 		)
@@ -504,10 +499,6 @@ func Test(t *testing.T) {
 			t.Errorf("expected version '2.0.0', got %v", response.Version)
 		}
 
-		if response.Host != "test-host" {
-			t.Errorf("expected host 'test-host', got %v", response.Host)
-		}
-
 		if response.Environment != "production" {
 			t.Errorf("expected environment 'production', got %v", response.Environment)
 		}
@@ -527,7 +518,6 @@ func Test(t *testing.T) {
 
 		handler := vitals.ReadyHandlerFunc(
 			"1.0.0",
-			"host",
 			"test",
 			[]vitals.Checker{checker},
 		)
