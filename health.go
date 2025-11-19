@@ -3,7 +3,6 @@ package vitals
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -133,12 +132,10 @@ func NewHandler(opts ...HandlerOption) http.Handler {
 // LiveHandlerFunc returns an HTTP handler function for liveness health checks.
 func LiveHandlerFunc() http.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) {
-		ctx := req.Context()
-
 		response := LiveResponse{Status: StatusOK}
 
 		disableResponseCacheHeaders(writer)
-		respondJSON(ctx, writer, http.StatusOK, response, "live", "/health/live")
+		respondJSON(writer, http.StatusOK, response)
 	}
 }
 
@@ -198,7 +195,7 @@ func readyHandler(
 	}
 
 	disableResponseCacheHeaders(writer)
-	respondJSON(ctx, writer, statusCode, response, "ready", "/health/ready")
+	respondJSON(writer, statusCode, response)
 }
 
 func contextWithTimeoutIfNeeded(
@@ -241,25 +238,13 @@ func overallStatus(checks []CheckResponse) Status {
 }
 
 func respondJSON(
-	ctx context.Context,
 	writer http.ResponseWriter,
 	statusCode int,
 	payload any,
-	handler, route string,
 ) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(statusCode)
-	err := json.NewEncoder(writer).Encode(payload)
-	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"failed to encode "+handler+" health response",
-			slog.String("handler", handler),
-			slog.String("route", route),
-			slog.Int("status", statusCode),
-			slog.Any("error", err),
-		)
-	}
+	_ = json.NewEncoder(writer).Encode(payload) //nolint:errchkjson
 }
 
 // disableResponseCacheHeaders sets headers to prevent caching of health responses.
