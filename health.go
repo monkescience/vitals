@@ -50,7 +50,7 @@ type readyConfig struct {
 	overallTimeout time.Duration
 }
 
-func runCheck(ctx context.Context, cfg readyConfig, chk Checker) CheckResponse {
+func runCheck(ctx context.Context, chk Checker) CheckResponse {
 	start := time.Now()
 
 	status, msg := chk.Check(ctx)
@@ -181,7 +181,7 @@ func readyHandler(
 		defer cancel()
 	}
 
-	checks := runAllChecks(ctx, cfg, checkers)
+	checks := runAllChecks(ctx, checkers)
 
 	response := ReadyResponse{
 		Status:      StatusOK,
@@ -212,7 +212,7 @@ func contextWithTimeoutIfNeeded(
 	return context.WithTimeout(ctx, duration)
 }
 
-func runAllChecks(ctx context.Context, cfg readyConfig, checkers []Checker) []CheckResponse {
+func runAllChecks(ctx context.Context, checkers []Checker) []CheckResponse {
 	responses := make([]CheckResponse, len(checkers))
 
 	var waitGroup sync.WaitGroup
@@ -221,7 +221,7 @@ func runAllChecks(ctx context.Context, cfg readyConfig, checkers []Checker) []Ch
 		checkerIndex, chk := idx, checker
 
 		waitGroup.Go(func() {
-			responses[checkerIndex] = runCheck(ctx, cfg, chk)
+			responses[checkerIndex] = runCheck(ctx, chk)
 		})
 	}
 
