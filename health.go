@@ -113,9 +113,9 @@ func WithReadyOptions(opts ...ReadyOption) HandlerOption {
 
 // NewHandler creates an HTTP handler that provides health check endpoints at /health/live and /health/ready.
 func NewHandler(opts ...HandlerOption) http.Handler {
-	hc := handlerConfig{}
+	var handlerCfg handlerConfig
 	for _, o := range opts {
-		o(&hc)
+		o(&handlerCfg)
 	}
 
 	mux := http.NewServeMux()
@@ -123,7 +123,7 @@ func NewHandler(opts ...HandlerOption) http.Handler {
 	mux.HandleFunc("GET /health/live", LiveHandlerFunc())
 	mux.HandleFunc(
 		"GET /health/ready",
-		ReadyHandlerFunc(hc.version, hc.environment, hc.checkers, hc.readyOpts...),
+		ReadyHandlerFunc(handlerCfg.version, handlerCfg.environment, handlerCfg.checkers, handlerCfg.readyOpts...),
 	)
 
 	return mux

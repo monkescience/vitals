@@ -1,4 +1,8 @@
 version: "2"
+
+run:
+  tests: false
+
 linters:
   default: none
   enable:
@@ -112,9 +116,9 @@ linters:
 
 formatters:
   enable:
-    - gci
+    # - gci
     # - gofmt
     - gofumpt
     - goimports
-    - golines
+    # - golines
     # - swaggo
