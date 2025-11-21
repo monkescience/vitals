@@ -1,4 +1,4 @@
-package vitals
+package vital
 
 import (
 	"context"

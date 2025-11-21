@@ -1,4 +1,4 @@
-package vitals_test
+package vital_test
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monkescience/vitals"
+	"github.com/monkescience/vital"
 )
 
 // mockChecker is a test implementation of the Checker interface
 type mockChecker struct {
 	name    string
-	status  vitals.Status
+	status  vital.Status
 	message string
 	delay   time.Duration
 }
@@ -24,12 +24,12 @@ func (m *mockChecker) Name() string {
 	return m.name
 }
 
-func (m *mockChecker) Check(ctx context.Context) (vitals.Status, string) {
+func (m *mockChecker) Check(ctx context.Context) (vital.Status, string) {
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):
 		case <-ctx.Done():
-			return vitals.StatusError, "check timed out"
+			return vital.StatusError, "check timed out"
 		}
 	}
 	return m.status, m.message
@@ -45,10 +45,10 @@ func Test(t *testing.T) {
 		version := "1.2.3"
 		environment := "eu-central-1-dev"
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion(version),
-			vitals.WithEnvironment(environment),
-			vitals.WithCheckers(),
+		handlers := vital.NewHandler(
+			vital.WithVersion(version),
+			vital.WithEnvironment(environment),
+			vital.WithCheckers(),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
@@ -66,13 +66,13 @@ func Test(t *testing.T) {
 		}
 
 		// Verify response body
-		var response vitals.LiveResponse
+		var response vital.LiveResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 
 		// Verify cache headers are set
@@ -88,9 +88,9 @@ func Test(t *testing.T) {
 		version := "1.2.3"
 		environment := "eu-central-1-dev"
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion(version),
-			vitals.WithEnvironment(environment),
+		handlers := vital.NewHandler(
+			vital.WithVersion(version),
+			vital.WithEnvironment(environment),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -107,13 +107,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 
 		if response.Version != version {
@@ -135,14 +135,14 @@ func Test(t *testing.T) {
 		// GIVEN
 		checker := &mockChecker{
 			name:    "database",
-			status:  vitals.StatusOK,
+			status:  vital.StatusOK,
 			message: "connection successful",
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithEnvironment("test"),
-			vitals.WithCheckers(checker),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithEnvironment("test"),
+			vital.WithCheckers(checker),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -159,13 +159,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 
 		if len(response.Checks) != 1 {
@@ -177,8 +177,8 @@ func Test(t *testing.T) {
 			t.Errorf("expected check name 'database', got %v", check.Name)
 		}
 
-		if check.Status != vitals.StatusOK {
-			t.Errorf("expected check status %v, got %v", vitals.StatusOK, check.Status)
+		if check.Status != vital.StatusOK {
+			t.Errorf("expected check status %v, got %v", vital.StatusOK, check.Status)
 		}
 
 		if check.Message != "connection successful" {
@@ -196,13 +196,13 @@ func Test(t *testing.T) {
 		// GIVEN
 		checker := &mockChecker{
 			name:    "redis",
-			status:  vitals.StatusError,
+			status:  vital.StatusError,
 			message: "connection refused",
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithCheckers(checker),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithCheckers(checker),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -219,13 +219,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusError {
-			t.Errorf("expected status %v, got %v", vitals.StatusError, response.Status)
+		if response.Status != vital.StatusError {
+			t.Errorf("expected status %v, got %v", vital.StatusError, response.Status)
 		}
 
 		if len(response.Checks) != 1 {
@@ -233,8 +233,8 @@ func Test(t *testing.T) {
 		}
 
 		check := response.Checks[0]
-		if check.Status != vitals.StatusError {
-			t.Errorf("expected check status %v, got %v", vitals.StatusError, check.Status)
+		if check.Status != vital.StatusError {
+			t.Errorf("expected check status %v, got %v", vital.StatusError, check.Status)
 		}
 
 		if check.Message != "connection refused" {
@@ -246,15 +246,15 @@ func Test(t *testing.T) {
 		t.Parallel()
 
 		// GIVEN
-		checkers := []vitals.Checker{
-			&mockChecker{name: "database", status: vitals.StatusOK, message: "ok"},
-			&mockChecker{name: "redis", status: vitals.StatusOK, message: "ok"},
-			&mockChecker{name: "s3", status: vitals.StatusOK, message: "ok"},
+		checkers := []vital.Checker{
+			&mockChecker{name: "database", status: vital.StatusOK, message: "ok"},
+			&mockChecker{name: "redis", status: vital.StatusOK, message: "ok"},
+			&mockChecker{name: "s3", status: vital.StatusOK, message: "ok"},
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithCheckers(checkers...),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithCheckers(checkers...),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -271,13 +271,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 
 		if len(response.Checks) != 3 {
@@ -289,15 +289,15 @@ func Test(t *testing.T) {
 		t.Parallel()
 
 		// GIVEN
-		checkers := []vitals.Checker{
-			&mockChecker{name: "database", status: vitals.StatusOK, message: "ok"},
-			&mockChecker{name: "redis", status: vitals.StatusError, message: "failed"},
-			&mockChecker{name: "s3", status: vitals.StatusOK, message: "ok"},
+		checkers := []vital.Checker{
+			&mockChecker{name: "database", status: vital.StatusOK, message: "ok"},
+			&mockChecker{name: "redis", status: vital.StatusError, message: "failed"},
+			&mockChecker{name: "s3", status: vital.StatusOK, message: "ok"},
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithCheckers(checkers...),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithCheckers(checkers...),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -314,19 +314,19 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusError {
-			t.Errorf("expected overall status %v, got %v", vitals.StatusError, response.Status)
+		if response.Status != vital.StatusError {
+			t.Errorf("expected overall status %v, got %v", vital.StatusError, response.Status)
 		}
 
 		// Verify individual check statuses
 		foundError := false
 		for _, check := range response.Checks {
-			if check.Name == "redis" && check.Status == vitals.StatusError {
+			if check.Name == "redis" && check.Status == vital.StatusError {
 				foundError = true
 			}
 		}
@@ -342,14 +342,14 @@ func Test(t *testing.T) {
 		// GIVEN - checker that takes longer than the timeout
 		slowChecker := &mockChecker{
 			name:   "slow-service",
-			status: vitals.StatusOK,
+			status: vital.StatusOK,
 			delay:  100 * time.Millisecond,
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithCheckers(slowChecker),
-			vitals.WithReadyOptions(vitals.WithOverallReadyTimeout(10*time.Millisecond)),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithCheckers(slowChecker),
+			vital.WithReadyOptions(vital.WithOverallReadyTimeout(10*time.Millisecond)),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -366,15 +366,15 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusError {
+		if response.Status != vital.StatusError {
 			t.Errorf(
 				"expected status %v due to timeout, got %v",
-				vitals.StatusError,
+				vital.StatusError,
 				response.Status,
 			)
 		}
@@ -384,7 +384,7 @@ func Test(t *testing.T) {
 		}
 
 		check := response.Checks[0]
-		if check.Status != vitals.StatusError {
+		if check.Status != vital.StatusError {
 			t.Errorf("expected check to fail due to timeout, got status %v", check.Status)
 		}
 
@@ -400,14 +400,14 @@ func Test(t *testing.T) {
 		// GIVEN - zero timeout should not apply any timeout
 		checker := &mockChecker{
 			name:   "service",
-			status: vitals.StatusOK,
+			status: vital.StatusOK,
 			delay:  10 * time.Millisecond,
 		}
 
-		handlers := vitals.NewHandler(
-			vitals.WithVersion("1.0.0"),
-			vitals.WithCheckers(checker),
-			vitals.WithReadyOptions(vitals.WithOverallReadyTimeout(0)),
+		handlers := vital.NewHandler(
+			vital.WithVersion("1.0.0"),
+			vital.WithCheckers(checker),
+			vital.WithReadyOptions(vital.WithOverallReadyTimeout(0)),
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -424,13 +424,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 	})
 
@@ -438,7 +438,7 @@ func Test(t *testing.T) {
 		t.Parallel()
 
 		// GIVEN
-		handler := vitals.LiveHandlerFunc()
+		handler := vital.LiveHandlerFunc()
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 
@@ -454,13 +454,13 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.LiveResponse
+		var response vital.LiveResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		if response.Status != vitals.StatusOK {
-			t.Errorf("expected status %v, got %v", vitals.StatusOK, response.Status)
+		if response.Status != vital.StatusOK {
+			t.Errorf("expected status %v, got %v", vital.StatusOK, response.Status)
 		}
 	})
 
@@ -470,14 +470,14 @@ func Test(t *testing.T) {
 		// GIVEN
 		checker := &mockChecker{
 			name:    "test-service",
-			status:  vitals.StatusOK,
+			status:  vital.StatusOK,
 			message: "healthy",
 		}
 
-		handler := vitals.ReadyHandlerFunc(
+		handler := vital.ReadyHandlerFunc(
 			"2.0.0",
 			"production",
-			[]vitals.Checker{checker},
+			[]vital.Checker{checker},
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -494,7 +494,7 @@ func Test(t *testing.T) {
 			)
 		}
 
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -517,13 +517,13 @@ func Test(t *testing.T) {
 
 		checker := &mockChecker{
 			name:   "service",
-			status: vitals.StatusOK, // Returns OK but context is cancelled
+			status: vital.StatusOK, // Returns OK but context is cancelled
 		}
 
-		handler := vitals.ReadyHandlerFunc(
+		handler := vital.ReadyHandlerFunc(
 			"1.0.0",
 			"test",
-			[]vitals.Checker{checker},
+			[]vital.Checker{checker},
 		)
 		responseRecorder := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health/ready", nil).WithContext(ctx)
@@ -532,13 +532,13 @@ func Test(t *testing.T) {
 		handler(responseRecorder, req)
 
 		// THEN - should detect context cancellation
-		var response vitals.ReadyResponse
+		var response vital.ReadyResponse
 		if err := json.NewDecoder(responseRecorder.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
 		// The check should be marked as error due to context cancellation
-		if len(response.Checks) > 0 && response.Checks[0].Status == vitals.StatusOK {
+		if len(response.Checks) > 0 && response.Checks[0].Status == vital.StatusOK {
 			// Note: The behavior depends on timing - if the check completes before
 			// context cancellation is detected, it might still be OK
 			t.Logf("Check completed before context cancellation was detected")
