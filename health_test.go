@@ -45,7 +45,7 @@ func Test(t *testing.T) {
 		version := "1.2.3"
 		environment := "eu-central-1-dev"
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion(version),
 			vital.WithEnvironment(environment),
 			vital.WithCheckers(),
@@ -88,7 +88,7 @@ func Test(t *testing.T) {
 		version := "1.2.3"
 		environment := "eu-central-1-dev"
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion(version),
 			vital.WithEnvironment(environment),
 		)
@@ -139,7 +139,7 @@ func Test(t *testing.T) {
 			message: "connection successful",
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithEnvironment("test"),
 			vital.WithCheckers(checker),
@@ -200,7 +200,7 @@ func Test(t *testing.T) {
 			message: "connection refused",
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithCheckers(checker),
 		)
@@ -252,7 +252,7 @@ func Test(t *testing.T) {
 			&mockChecker{name: "s3", status: vital.StatusOK, message: "ok"},
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithCheckers(checkers...),
 		)
@@ -295,7 +295,7 @@ func Test(t *testing.T) {
 			&mockChecker{name: "s3", status: vital.StatusOK, message: "ok"},
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithCheckers(checkers...),
 		)
@@ -346,7 +346,7 @@ func Test(t *testing.T) {
 			delay:  100 * time.Millisecond,
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithCheckers(slowChecker),
 			vital.WithReadyOptions(vital.WithOverallReadyTimeout(10*time.Millisecond)),
@@ -404,7 +404,7 @@ func Test(t *testing.T) {
 			delay:  10 * time.Millisecond,
 		}
 
-		handlers := vital.NewHandler(
+		handlers := vital.NewHealthHandler(
 			vital.WithVersion("1.0.0"),
 			vital.WithCheckers(checker),
 			vital.WithReadyOptions(vital.WithOverallReadyTimeout(0)),

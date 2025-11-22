@@ -88,31 +88,31 @@ type handlerConfig struct {
 	readyOpts   []ReadyOption
 }
 
-// HandlerOption configures the health check handler.
-type HandlerOption func(*handlerConfig)
+// HealthHandlerOption configures the health check handler.
+type HealthHandlerOption func(*handlerConfig)
 
 // WithVersion sets the version string to include in readiness responses.
-func WithVersion(v string) HandlerOption {
+func WithVersion(v string) HealthHandlerOption {
 	return func(c *handlerConfig) { c.version = v }
 }
 
 // WithEnvironment sets the environment string to include in readiness responses.
-func WithEnvironment(env string) HandlerOption {
+func WithEnvironment(env string) HealthHandlerOption {
 	return func(c *handlerConfig) { c.environment = env }
 }
 
 // WithCheckers adds health checkers to be executed during readiness checks.
-func WithCheckers(checkers ...Checker) HandlerOption {
+func WithCheckers(checkers ...Checker) HealthHandlerOption {
 	return func(c *handlerConfig) { c.checkers = append(c.checkers, checkers...) }
 }
 
 // WithReadyOptions configures readiness-specific options such as timeouts.
-func WithReadyOptions(opts ...ReadyOption) HandlerOption {
+func WithReadyOptions(opts ...ReadyOption) HealthHandlerOption {
 	return func(c *handlerConfig) { c.readyOpts = append(c.readyOpts, opts...) }
 }
 
-// NewHandler creates an HTTP handler that provides health check endpoints at /health/live and /health/ready.
-func NewHandler(opts ...HandlerOption) http.Handler {
+// NewHealthHandler creates an HTTP handler that provides health check endpoints at /health/live and /health/ready.
+func NewHealthHandler(opts ...HealthHandlerOption) http.Handler {
 	var handlerCfg handlerConfig
 	for _, o := range opts {
 		o(&handlerCfg)

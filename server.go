@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,6 +28,7 @@ type Server struct {
 	keyPath         string
 	certificatePath string
 	shutdownTimeout time.Duration
+	logger          *slog.Logger
 }
 
 // ServerOption is a functional option for configuring a Server.
@@ -78,27 +78,33 @@ func WithIdleTimeout(timeout time.Duration) ServerOption {
 	}
 }
 
-// WithLogger sets the error logger for the server.
-func WithLogger(logger *log.Logger) ServerOption {
+// WithLogger sets the structured logger for the server.
+func WithLogger(logger *slog.Logger) ServerOption {
 	return func(s *Server) {
-		s.ErrorLog = logger
+		s.logger = logger
+		s.ErrorLog = slog.NewLogLogger(logger.Handler(), slog.LevelError)
 	}
 }
 
 // NewServer creates a new Server with the provided handler and options.
 func NewServer(handler http.Handler, opts ...ServerOption) *Server {
+	// Use default logger
+	defaultLogger := slog.Default()
+
 	//nolint:exhaustruct // Only setting required fields, others use sensible defaults
 	srv := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
+		ErrorLog:          slog.NewLogLogger(defaultLogger.Handler(), slog.LevelError),
 	}
 
 	//nolint:exhaustruct // Config fields are set via functional options
 	server := &Server{
 		Server:          srv,
 		shutdownTimeout: defaultShutdownTimeout,
+		logger:          defaultLogger,
 	}
 
 	// Apply all options
@@ -131,7 +137,7 @@ func (server *Server) Run() {
 	select {
 	case err := <-serverErrors:
 		signal.Stop(shutdown)
-		slog.Error(
+		server.logger.Error(
 			"server error",
 			slog.Any("err", err),
 		)
@@ -139,28 +145,28 @@ func (server *Server) Run() {
 
 	case sig := <-shutdown:
 		signal.Stop(shutdown)
-		slog.Info(
+		server.logger.Info(
 			"received shutdown signal",
 			slog.String("signal", sig.String()),
 		)
 
 		err := server.stop()
 		if err != nil {
-			slog.Error(
+			server.logger.Error(
 				"failed to stop server gracefully",
 				slog.Any("err", err),
 			)
 			os.Exit(1)
 		}
 
-		slog.Info("server stopped gracefully")
+		server.logger.Info("server stopped gracefully")
 	}
 }
 
 // start begins listening and serving HTTPS requests.
 // It blocks until the server stops or encounters an error.
 func (server *Server) start() error {
-	slog.Info(
+	server.logger.Info(
 		"starting server",
 		slog.Int("port", server.port),
 	)
@@ -177,7 +183,7 @@ func (server *Server) start() error {
 func (server *Server) stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), server.shutdownTimeout)
 
-	slog.Info(
+	server.logger.Info(
 		"stopping server",
 		slog.String("timeout", server.shutdownTimeout.String()),
 	)
