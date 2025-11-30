@@ -1,0 +1,364 @@
+package vital
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestContextHandler_ExtractsContextValues(t *testing.T) {
+	// GIVEN: a context handler with a registered context key
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
+
+	testKey := ContextKey{Name: "test_key"}
+	handler := NewContextHandler(baseHandler, WithContextKeys(testKey))
+	logger := slog.New(handler)
+
+	ctx := context.WithValue(context.Background(), testKey, "test_value")
+
+	// WHEN: logging with context
+	logger.InfoContext(ctx, "test message")
+
+	// THEN: the context value should be in the log output
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	if logEntry["test_key"] != "test_value" {
+		t.Errorf("expected test_key='test_value', got %v", logEntry["test_key"])
+	}
+
+	if logEntry["msg"] != "test message" {
+		t.Errorf("expected msg='test message', got %v", logEntry["msg"])
+	}
+}
+
+func TestContextHandler_MultipleContextKeys(t *testing.T) {
+	// GIVEN: a context handler with multiple registered context keys
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+
+	key1 := ContextKey{Name: "key1"}
+	key2 := ContextKey{Name: "key2"}
+	handler := NewContextHandler(baseHandler, WithContextKeys(key1, key2))
+	logger := slog.New(handler)
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, key1, "value1")
+	ctx = context.WithValue(ctx, key2, "value2")
+
+	// WHEN: logging with context
+	logger.InfoContext(ctx, "test message")
+
+	// THEN: all context values should be in the log output
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	if logEntry["key1"] != "value1" {
+		t.Errorf("expected key1='value1', got %v", logEntry["key1"])
+	}
+
+	if logEntry["key2"] != "value2" {
+		t.Errorf("expected key2='value2', got %v", logEntry["key2"])
+	}
+}
+
+func TestContextHandler_MissingContextValue(t *testing.T) {
+	// GIVEN: a context handler with a registered key but no value in context
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+
+	missingKey := ContextKey{Name: "missing_key"}
+	handler := NewContextHandler(baseHandler, WithContextKeys(missingKey))
+	logger := slog.New(handler)
+
+	// WHEN: logging without the context value
+	logger.InfoContext(context.Background(), "test message")
+
+	// THEN: the missing key should not be in the log
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	if _, exists := logEntry["missing_key"]; exists {
+		t.Error("expected missing_key to not be in log output")
+	}
+}
+
+func TestContextHandler_WithAttrs(t *testing.T) {
+	// GIVEN: a context handler with added attributes
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+	handler := NewContextHandler(baseHandler)
+	logger := slog.New(handler)
+
+	loggerWithAttrs := logger.With(slog.String("attr1", "value1"))
+
+	// WHEN: logging with the modified logger
+	loggerWithAttrs.Info("test message")
+
+	// THEN: the attribute should be in the log output
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	if logEntry["attr1"] != "value1" {
+		t.Errorf("expected attr1='value1', got %v", logEntry["attr1"])
+	}
+}
+
+func TestContextHandler_WithGroup(t *testing.T) {
+	// GIVEN: a context handler with a group
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+	handler := NewContextHandler(baseHandler)
+	logger := slog.New(handler)
+
+	loggerWithGroup := logger.WithGroup("group1")
+
+	// WHEN: logging with the grouped logger
+	loggerWithGroup.Info("test message", slog.String("key", "value"))
+
+	// THEN: the group should be created in the log output
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	group, ok := logEntry["group1"].(map[string]any)
+	if !ok {
+		t.Fatal("expected group1 to be a map")
+	}
+
+	if group["key"] != "value" {
+		t.Errorf("expected group1.key='value', got %v", group["key"])
+	}
+}
+
+func TestContextHandler_AvoidNesting(t *testing.T) {
+	// GIVEN: a context handler wrapping another context handler
+	baseHandler := slog.NewJSONHandler(&bytes.Buffer{}, nil)
+	handler1 := NewContextHandler(baseHandler)
+
+	// WHEN: wrapping the context handler again
+	handler2 := NewContextHandler(handler1)
+
+	// THEN: it should unwrap and use the original base handler
+	if handler2.handler != baseHandler {
+		t.Error("expected handler2 to unwrap handler1 and use the base handler")
+	}
+}
+
+func TestContextHandler_Enabled(t *testing.T) {
+	// GIVEN: a context handler with Warn level
+	baseHandler := slog.NewJSONHandler(&bytes.Buffer{}, &slog.HandlerOptions{
+		Level: slog.LevelWarn,
+	})
+	handler := NewContextHandler(baseHandler)
+
+	ctx := context.Background()
+
+	// WHEN: checking if different log levels are enabled
+	// THEN: only Warn and above should be enabled
+	if handler.Enabled(ctx, slog.LevelInfo) {
+		t.Error("expected LevelInfo to be disabled when handler level is Warn")
+	}
+
+	if !handler.Enabled(ctx, slog.LevelWarn) {
+		t.Error("expected LevelWarn to be enabled")
+	}
+
+	if !handler.Enabled(ctx, slog.LevelError) {
+		t.Error("expected LevelError to be enabled")
+	}
+}
+
+func TestTraceContext_AutomaticLogging(t *testing.T) {
+	// GIVEN: a context handler with builtin keys and trace context middleware
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+
+	handler := NewContextHandler(baseHandler, WithBuiltinKeys())
+	logger := slog.New(handler)
+
+	testHandler := TraceContext()(
+		RequestLogger(logger)(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}),
+		),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+
+	// WHEN: the handler processes the request
+	testHandler.ServeHTTP(rec, req)
+
+	// THEN: trace context should be automatically logged
+	var logEntry map[string]any
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("failed to parse log output: %v", err)
+	}
+
+	traceID, hasTraceID := logEntry["trace_id"]
+	if !hasTraceID {
+		t.Error("expected trace_id to be in log output")
+	}
+
+	spanID, hasSpanID := logEntry["span_id"]
+	if !hasSpanID {
+		t.Error("expected span_id to be in log output")
+	}
+
+	traceFlags, hasTraceFlags := logEntry["trace_flags"]
+	if !hasTraceFlags {
+		t.Error("expected trace_flags to be in log output")
+	}
+
+	// Verify traceparent header matches logged values
+	traceparent := rec.Header().Get("traceparent")
+	parts := strings.Split(traceparent, "-")
+
+	if parts[1] != traceID {
+		t.Errorf("expected trace_id in log (%v) to match header (%v)", traceID, parts[1])
+	}
+
+	if parts[2] != spanID {
+		t.Errorf("expected span_id in log (%v) to match header (%v)", spanID, parts[2])
+	}
+
+	if parts[3] != traceFlags {
+		t.Errorf("expected trace_flags in log (%v) to match header (%v)", traceFlags, parts[3])
+	}
+}
+
+func TestRegistry_Register(t *testing.T) {
+	// GIVEN: a new registry
+	registry := NewRegistry()
+
+	testKey := ContextKey{Name: "test_key"}
+
+	// WHEN: registering a key
+	registry.Register(testKey)
+
+	// THEN: the key should be in the registry
+	keys := registry.Keys()
+	found := false
+	for _, key := range keys {
+		if key.Name == testKey.Name {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("expected test_key to be registered")
+	}
+}
+
+func TestRegistry_Keys(t *testing.T) {
+	// GIVEN: a registry with multiple keys
+	registry := NewRegistry()
+
+	key1 := ContextKey{Name: "key1"}
+	key2 := ContextKey{Name: "key2"}
+	registry.Register(key1)
+	registry.Register(key2)
+
+	// WHEN: getting all keys
+	keys := registry.Keys()
+
+	// THEN: it should return all registered keys
+	if len(keys) != 2 {
+		t.Errorf("expected 2 keys, got %d", len(keys))
+	}
+
+	keyNames := make(map[string]bool)
+	for _, key := range keys {
+		keyNames[key.Name] = true
+	}
+
+	if !keyNames["key1"] || !keyNames["key2"] {
+		t.Error("expected both key1 and key2 to be in registry")
+	}
+}
+
+func TestBuiltinKeys(t *testing.T) {
+	// WHEN: getting builtin keys
+	keys := BuiltinKeys()
+
+	// THEN: all trace context keys should be included
+	expectedKeys := map[string]bool{
+		"trace_id":    false,
+		"span_id":     false,
+		"trace_flags": false,
+	}
+
+	for _, key := range keys {
+		if _, exists := expectedKeys[key.Name]; exists {
+			expectedKeys[key.Name] = true
+		}
+	}
+
+	for keyName, found := range expectedKeys {
+		if !found {
+			t.Errorf("expected %s to be in builtin keys", keyName)
+		}
+	}
+}
+
+func TestContextHandler_DifferentValueTypes(t *testing.T) {
+	// GIVEN: a context handler with keys for different value types
+	var buf bytes.Buffer
+	baseHandler := slog.NewJSONHandler(&buf, nil)
+
+	stringKey := ContextKey{Name: "string_val"}
+	intKey := ContextKey{Name: "int_val"}
+	boolKey := ContextKey{Name: "bool_val"}
+
+	handler := NewContextHandler(baseHandler, WithContextKeys(stringKey, intKey, boolKey))
+	logger := slog.New(handler)
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, stringKey, "hello")
+	ctx = context.WithValue(ctx, intKey, 42)
+	ctx = context.WithValue(ctx, boolKey, true)
+
+	// WHEN: logging with context containing different value types
+	logger.InfoContext(ctx, "test message")
+
+	// THEN: all values should be correctly logged with their types
+	logOutput := buf.String()
+
+	if !strings.Contains(logOutput, `"string_val":"hello"`) {
+		t.Error("expected string_val to be in log output")
+	}
+
+	if !strings.Contains(logOutput, `"int_val":42`) {
+		t.Error("expected int_val to be in log output")
+	}
+
+	if !strings.Contains(logOutput, `"bool_val":true`) {
+		t.Error("expected bool_val to be in log output")
+	}
+}
