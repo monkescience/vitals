@@ -25,6 +25,7 @@ type Server struct {
 	*http.Server
 
 	port            int
+	useTLS          bool
 	keyPath         string
 	certificatePath string
 	shutdownTimeout time.Duration
@@ -45,6 +46,7 @@ func WithPort(port int) ServerOption {
 // WithTLS sets the TLS certificate and key paths.
 func WithTLS(certPath, keyPath string) ServerOption {
 	return func(s *Server) {
+		s.useTLS = true
 		s.certificatePath = certPath
 		s.keyPath = keyPath
 	}
@@ -163,17 +165,26 @@ func (server *Server) Run() {
 	}
 }
 
-// start begins listening and serving HTTPS requests.
+// start begins listening and serving HTTP or HTTPS requests.
 // It blocks until the server stops or encounters an error.
 func (server *Server) start() error {
 	server.logger.Info(
 		"starting server",
 		slog.Int("port", server.port),
+		slog.Bool("tls", server.useTLS),
 	)
 
-	err := server.ListenAndServeTLS(server.certificatePath, server.keyPath)
-	if err != nil {
-		return fmt.Errorf("failed to start TLS server: %w", err)
+	var err error
+	if server.useTLS {
+		err = server.ListenAndServeTLS(server.certificatePath, server.keyPath)
+		if err != nil {
+			return fmt.Errorf("failed to start TLS server: %w", err)
+		}
+	} else {
+		err = server.ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("failed to start HTTP server: %w", err)
+		}
 	}
 
 	return nil
