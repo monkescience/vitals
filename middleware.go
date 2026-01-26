@@ -128,6 +128,8 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+// Deprecated: Use OTel() middleware instead for W3C trace propagation with full observability.
+//
 // TraceContext returns a middleware that implements W3C Trace Context propagation.
 // It parses incoming traceparent/tracestate headers, generates a new child span,
 // and propagates the trace context in response headers and request context.
